@@ -2,13 +2,13 @@ name: agentpolicy
 version: 0.4.1
 description: enforce exact executable and write-open policy for one cgroup with BPF LSM
 homepageURL: https://github.com/vfalico/ig-kmx-guardd-public
-documentationURL: https://github.com/vfalico/ig-kmx-guardd-public/blob/main/gadget/README.md
+documentationURL: https://github.com/vfalico/ig-kmx-guardd-public/blob/06df9c9a8e285b6fd86f760f17cfcb566c44c1f0/gadget/README.md
 sourceURL: https://github.com/vfalico/ig-kmx-guardd-public
 annotations:
   org.opencontainers.image.title: agentpolicy
   org.opencontainers.image.description: Standalone BPF-LSM agent policy enforcement gadget
   org.opencontainers.image.licenses: Apache-2.0 AND (LGPL-2.1 OR BSD-2-Clause)
-  io.artifacthub.package.readme-url: https://github.com/vfalico/ig-kmx-guardd-public/blob/main/gadget/README.md
+  io.artifacthub.package.readme-url: https://github.com/vfalico/ig-kmx-guardd-public/blob/06df9c9a8e285b6fd86f760f17cfcb566c44c1f0/gadget/README.md
 datasources:
   agentpolicy:
     annotations:

@@ -24,6 +24,17 @@ class PackagingTests(unittest.TestCase):
         config = json.loads((ROOT / "packaging" / "config.example.json").read_text())
         self.assertEqual(config["allowed_uids"], [0])
 
+    def test_gadget_metadata_uses_immutable_documentation(self):
+        metadata = (ROOT / "gadget" / "gadget.yaml").read_text()
+        self.assertNotIn("/blob/main/", metadata)
+        self.assertEqual(
+            metadata.count(
+                "/blob/06df9c9a8e285b6fd86f760f17cfcb566c44c1f0/"
+                "gadget/README.md"
+            ),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
