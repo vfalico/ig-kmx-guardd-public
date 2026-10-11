@@ -303,6 +303,17 @@ class GuardService:
         if status is not None:
             raise RuntimeError(f"IG worker exited {status} {label}")
 
+    @staticmethod
+    def _correlation_expected(binding: Binding, identity, policy: dict, policy_raw: bytes) -> dict:
+        return {
+            "cgroup_id": identity.cgroup_id,
+            "generation": binding.generation,
+            "policy_digest": binding.policy_digest,
+            "policy": policy,
+            "policy_raw": policy_raw,
+            "minimum_counts": {"program": 1, "map": 4, "link": 1},
+        }
+
     def _activate(self, binding: Binding, body: dict, fds: list[int]) -> dict:
         policy = body["policy"]
         if binding.generation != 1:
@@ -321,11 +332,9 @@ class GuardService:
             self.policies[binding.key()] = (policy, policy_raw)
             self.store.set_worker(binding.key(), worker.process.pid)
             receipts.append(self._receipt(binding, Stage.IG_PROCESS_STARTED, {"pid": worker.process.pid, "pidfd": worker.pidfd is not None}))
-            expected = {
-                "cgroup_id": identity.cgroup_id, "generation": binding.generation,
-                "policy_digest": binding.policy_digest, "policy": policy, "policy_raw": policy_raw,
-                "minimum_counts": {"program": 1, "map": 4, "link": 1},
-            }
+            expected = self._correlation_expected(
+                binding, identity, policy, policy_raw,
+            )
             self._require_worker_alive(worker, "before kernel correlation")
             proof = self.inventory.correlate(worker.process.pid, expected)
             self._require_worker_alive(worker, "after kernel correlation")
@@ -575,4 +584,3 @@ class GuardService:
         finally:
             if owned >= 0:
                 close_fd(owned)
-

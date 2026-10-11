@@ -69,6 +69,10 @@ class Inventory:
     def correlate(self, pid, expected):
         return {
             "worker_pid": pid, "objects": [], "counts": {"program": 1, "map": 4, "link": 1},
+            "attachments": [
+                {"program_name": "agentpolicy_exec", "program_id": 6, "link_id": 7,
+                 "attach_type": "lsm/bprm_check_security", "target": f"cgroup:{expected['cgroup_id']}"},
+            ],
             "map_readback": {
                 "verified": True, "state": "ACTIVE", "quarantined": False,
                 "generation": expected["generation"], "failure_closed": True,

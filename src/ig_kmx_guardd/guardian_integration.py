@@ -73,11 +73,19 @@ class FailSafeGuardService(GuardService):
                 ],
                 "action": "freeze_exact_cgroup",
             }
+            policy, policy_raw = self.policies[key]
+            expected = self._correlation_expected(
+                binding, identity, policy, policy_raw,
+            )
+            self._require_worker_alive(worker, "before guardian-bound kernel correlation")
+            proof = self.inventory.correlate(worker.process.pid, expected)
+            self._require_worker_alive(worker, "before guardian-bound receipt")
             final = self._receipt(binding, Stage.FAIL_SAFE_GUARDIAN_ARMED, {
                 "assurance": "worker_fd_policy_map_readback_and_fail_safe_guardian",
                 "held": True,
                 "cgroup": identity.dict(),
                 "guardian": result["fail_safe_guardian"],
+                "attachments": proof["attachments"],
             })
             result["receipts"].append(final)
             result["release_eligible_receipt"] = final

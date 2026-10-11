@@ -34,7 +34,9 @@ class Inventory:
   readback={"verified":True,"state":"ACTIVE","quarantined":False,"generation":expected["generation"],"failure_closed":True,
    "policy_digest":sha256_bytes(expected["policy_raw"]),"exec_rules":len(spec.get("denyExecutables",[])),
    "write_rules":len(spec.get("denyWrites",[])),"network_rules":0,"map_ids":{"policy_state":1,"exec_rules":2,"write_rules":3,"network_rules":4}}
-  return {"worker_pid":pid,"objects":[{"kind":"link","id":9},{"kind":"map","id":1}],"map_readback":readback,
+  attachments=[{"program_name":"agentpolicy_open","program_id":6,"link_id":9,"attach_type":"lsm/file_open","target":f"cgroup:{expected['cgroup_id']}"},
+   {"program_name":"agentpolicy_permission","program_id":7,"link_id":10,"attach_type":"lsm/file_permission","target":f"cgroup:{expected['cgroup_id']}"}]
+  return {"worker_pid":pid,"objects":[{"kind":"link","id":9},{"kind":"map","id":1}],"attachments":attachments,"map_readback":readback,
           "target_cgroup_id":expected["cgroup_id"],"assurance":"worker_fd_policy_map_readback"}
  def release(self,pid):self.released.append(pid)
 
@@ -70,6 +72,7 @@ class GuardTests(unittest.TestCase):
   self.assertEqual(out["result"]["state"],State.ACTIVE_VALIDATED);self.assertEqual(payload["stage"],Stage.ACTIVATION_VALIDATED)
   self.assertTrue(payload["claims"]["held"]);self.assertTrue(self.service.signer.verify(receipt));self.assertEqual(len(out["result"]["receipts"]),6)
   proof=payload["claims"]["kernel_proof"];self.assertEqual(proof["map_readback"]["policy_digest"],self.b.policy_digest)
+  self.assertEqual([item["attach_type"] for item in proof["attachments"]],["lsm/file_open","lsm/file_permission"])
  def test_inventory_failure_never_activates_and_cleans_worker(self):
   self.inventory.fail=True
   with self.assertRaisesRegex(ValueError,"readback"):self.activate()

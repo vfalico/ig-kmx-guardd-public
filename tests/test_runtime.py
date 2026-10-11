@@ -4,8 +4,11 @@ from ig_kmx_guardd.model import canonical,sha256_bytes
 from ig_kmx_guardd.runtime import KernelInventory,VanillaIGRuntime
 
 class InventoryFixture(KernelInventory):
- def __init__(self):super().__init__("/usr/sbin/bpftool");self.dumps={}
+ def __init__(self):super().__init__("/usr/sbin/bpftool");self.dumps={};self.programs={}
  def _dump(self,map_id):return self.dumps[map_id]
+ def _run_json(self,*args):
+  if args[:3]==("prog","show","id"):return self.programs[int(args[3])]
+  return super()._run_json(*args)
 
 class RuntimeReadbackTests(unittest.TestCase):
  def fixture(self,generation=1,cgroup_id=55):
@@ -35,6 +38,31 @@ class RuntimeReadbackTests(unittest.TestCase):
  def test_rejects_invalid_bpftool_bytes(self):
   with self.assertRaises(ValueError):KernelInventory._bytes(["0000"])
   with self.assertRaises(ValueError):KernelInventory._bytes([999])
+ def test_attachment_evidence_uses_worker_owned_links_and_kernel_program_names(self):
+  inv,_,policy=self.fixture()
+  inv.programs={
+   10:{"id":10,"name":"agentpolicy_exec","type":"lsm"},
+   11:{"id":11,"name":"agentpolicy_open","type":"lsm"},
+   12:{"id":12,"name":"agentpolicy_permission","type":"lsm"},
+   13:{"id":13,"name":"other_trace","type":"tracepoint"},
+  }
+  objects=[
+   {"kind":"program","id":10},{"kind":"program","id":11},{"kind":"program","id":12},{"kind":"program","id":13},
+   {"kind":"link","id":20,"prog_id":10},
+   {"kind":"link","id":21,"prog_id":11},{"kind":"link","id":22,"prog_id":12},
+   {"kind":"link","id":23,"prog_id":13},{"kind":"link","id":24,"prog_id":999},
+  ]
+  out=inv._attachment_evidence(objects,{"policy":policy,"cgroup_id":55})
+  self.assertEqual(out,[
+   {"program_name":"agentpolicy_exec","program_id":10,"link_id":20,"attach_type":"lsm/bprm_check_security","target":"cgroup:55"},
+   {"program_name":"agentpolicy_open","program_id":11,"link_id":21,"attach_type":"lsm/file_open","target":"cgroup:55"},
+   {"program_name":"agentpolicy_permission","program_id":12,"link_id":22,"attach_type":"lsm/file_permission","target":"cgroup:55"},
+  ])
+ def test_attachment_evidence_rejects_missing_required_hook(self):
+  inv,_,policy=self.fixture();inv.programs={11:{"id":11,"name":"agentpolicy_open","type":"lsm"}}
+  objects=[{"kind":"program","id":11},{"kind":"link","id":21,"prog_id":11}]
+  with self.assertRaisesRegex(ValueError,"file_permission"):
+   inv._attachment_evidence(objects,{"policy":policy,"cgroup_id":55})
 
 class RuntimeImageTests(unittest.TestCase):
  def _fixture(self,root,reference="ghcr.io/vfalico/ig-kmx-guardd-public/agentpolicy:0.4.1",archive_digest=None,expected_digest=None):

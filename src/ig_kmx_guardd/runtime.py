@@ -294,7 +294,7 @@ class KernelInventory:
                 })
         return objects
 
-    def _owned_catalog(self, pid: int, expected_minimum: dict | None = None) -> tuple[list[tuple[str, int]], dict, dict[str, int]]:
+    def _owned_catalog(self, pid: int, expected_minimum: dict | None = None) -> tuple[list[dict], list[tuple[str, int]], dict, dict[str, int]]:
         objects = self._objects(pid)
         counts = {kind: sum(obj["kind"] == kind for obj in objects) for kind in ("program", "map", "link")}
         minimum = expected_minimum or {"program": 1, "map": 1, "link": 1}
@@ -306,7 +306,61 @@ class KernelInventory:
         if collisions:
             raise ValueError(f"BPF object already claimed by another worker: {collisions}")
         map_ids = {identity for kind, identity in unique if kind == "map"}
-        return unique, counts, self._map_catalog(map_ids)
+        return objects, unique, counts, self._map_catalog(map_ids)
+
+    def _attachment_evidence(self, objects: list[dict], expected: dict) -> list[dict]:
+        worker_program_ids = {
+            item["id"] for item in objects if item["kind"] == "program"
+        }
+        required = {}
+        spec = expected["policy"]["spec"]
+        if spec.get("denyExecutables"):
+            required["bprm_check_security"] = "agentpolicy_exec"
+        if spec.get("denyWrites"):
+            required.update({
+                "file_open": "agentpolicy_open",
+                "file_permission": "agentpolicy_permission",
+            })
+        if not required:
+            raise ValueError("policy has no supported attachment requirements")
+
+        attachments = []
+        seen = set()
+        for item in objects:
+            if item["kind"] != "link" or item.get("prog_id", 0) not in worker_program_ids:
+                continue
+            info = self._run_json("prog", "show", "id", item["prog_id"])
+            if isinstance(info, list):
+                if len(info) != 1:
+                    raise ValueError(f"ambiguous BPF program {item['prog_id']}")
+                info = info[0]
+            if not isinstance(info, dict) or info.get("id") != item["prog_id"]:
+                raise ValueError(f"BPF program identity mismatch for link {item['id']}")
+            name = info.get("name")
+            program_type = info.get("type")
+            hook = next(
+                (hook for hook, kernel_name in required.items() if kernel_name == name),
+                None,
+            )
+            if program_type != "lsm" or hook is None:
+                continue
+            if hook in seen:
+                raise ValueError(f"duplicate required LSM attachment {hook}")
+            seen.add(hook)
+            attachments.append({
+                "program_name": name,
+                "program_id": item["prog_id"],
+                "link_id": item["id"],
+                "attach_type": f"lsm/{hook}",
+                "target": f"cgroup:{expected['cgroup_id']}",
+            })
+        missing = sorted(set(required) - seen)
+        if missing:
+            raise ValueError(f"required LSM attachments are missing: {missing}")
+        return sorted(
+            attachments,
+            key=lambda item: (item["program_name"], item["program_id"], item["link_id"]),
+        )
 
     def _map_catalog(self, map_ids: set[int]) -> dict[str, int]:
         result: dict[str, int] = {}
@@ -401,14 +455,16 @@ class KernelInventory:
             if not Path(f"/proc/{pid}").exists():
                 raise ValueError("worker disappeared")
             try:
-                unique, counts, catalog = self._owned_catalog(pid, expected.get("minimum_counts"))
+                objects, unique, counts, catalog = self._owned_catalog(pid, expected.get("minimum_counts"))
                 readback = self._policy_readback(catalog, expected)
+                attachments = self._attachment_evidence(objects, expected)
                 with self._lock:
                     for item in unique:
                         self._claims[item] = pid
                 return {
                     "worker_pid": pid,
                     "objects": [{"kind": kind, "id": identity} for kind, identity in unique],
+                    "attachments": attachments,
                     "counts": counts, "target_cgroup_id": expected["cgroup_id"],
                     "map_readback": readback, "assurance": "worker_fd_policy_map_readback",
                 }
@@ -419,7 +475,7 @@ class KernelInventory:
 
     def clear_quarantine(self, pid: int, expected: dict) -> dict:
         """Idempotently clear the sticky latch and independently read it back."""
-        _unique, _counts, catalog = self._owned_catalog(pid, expected.get("minimum_counts"))
+        _objects, _unique, _counts, catalog = self._owned_catalog(pid, expected.get("minimum_counts"))
         before = self._policy_readback(catalog, dict(expected, expected_quarantined=None))
         map_id = catalog["policy_state"]
         if before["quarantined"]:
