@@ -1,10 +1,11 @@
 # ig-kmx-guardd
 
 `ig-kmx-guardd` is a privileged, node-local activation service for narrowly
-scoped agent policies. It loads a digest-pinned
-[Inspektor Gadget](https://github.com/vfalico/inspektor-gadget-public) image,
-binds the policy to one exact cgroup-v2 workload, and returns signed evidence
-only after the gadget and kernel attachment are verified.
+scoped agent policies. It uses
+[Inspektor Gadget](https://github.com/inspektor-gadget/inspektor-gadget) to
+load a digest-pinned AgentPolicy gadget OCI image, binds the policy to one exact
+cgroup-v2 workload, and returns signed evidence only after the gadget and
+kernel attachment are verified.
 
 This repository contains:
 
@@ -58,8 +59,7 @@ evidence after the decision, not the enforcement mechanism.
 - Python 3.11 or newer;
 - OpenSSL 3;
 - `bpftool`;
-- an owner-controlled Inspektor Gadget build from
-  `vfalico/inspektor-gadget-public`; and
+- an Inspektor Gadget build; and
 - root privileges for installation and BPF/cgroup operation.
 
 The service unit bounds capabilities and filesystem access, but guardd remains
@@ -68,21 +68,23 @@ paths before using it outside an isolated test node.
 
 ## Build
 
-Clone the integration branches and the pinned owner Inspektor Gadget source:
+Clone the integration branch and upstream Inspektor Gadget:
 
 ```bash
 branch=agentpolicy-kmx-orka-ig-guardd-current
 git clone --branch "$branch" \
   https://github.com/vfalico/ig-kmx-guardd-public.git
-git clone https://github.com/vfalico/inspektor-gadget-public.git
-git -C inspektor-gadget-public checkout \
-  b6dce71343f02269051fdea4e0d463d72c1d5310
+git clone https://github.com/inspektor-gadget/inspektor-gadget.git
 ```
 
 Use the companion integration repository's `release-manifest.json` to verify
 the exact guardd implementation and publication identity. The manifest avoids
 an impossible self-reference from this README while keeping the clone
 reproducible.
+
+The integration was accepted with upstream Inspektor Gadget commit
+`b6dce71343f02269051fdea4e0d463d72c1d5310`; current upstream IG may also be
+used.
 
 Create an isolated Python environment and run the host tests:
 
@@ -94,15 +96,15 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Build the gadget against the owner-controlled IG checkout by following
+Build the gadget against the upstream IG checkout by following
 [`gadget/README.md`](gadget/README.md). That workflow keeps canonical Go module
-paths and uses a local workspace or temporary vendor tree to select the owner
-fork. Do not commit `go.work`, a temporary `replace`, or `vendor/`.
+paths and uses a local workspace or temporary vendor tree to select the local
+checkout. Do not commit `go.work`, a temporary `replace`, or `vendor/`.
 
 ## Configure and install
 
 1. Build and verify the gadget OCI archive.
-2. Build the owner-fork `ig` executable.
+2. Build the `ig` executable.
 3. Generate separate Ed25519 key pairs for request authorization and receipt
    signing.
 4. Install the Python package into the fixed service virtual environment:

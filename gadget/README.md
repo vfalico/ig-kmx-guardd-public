@@ -9,24 +9,24 @@ Network enforcement is not part of this release. Any non-empty
 `denyNetworks` policy is rejected before activation, and guardd independently
 requires the network map to remain empty.
 
-## Build against the owner IG fork
+## Build with Inspektor Gadget
 
-Clone `vfalico/inspektor-gadget-public` beside this repository. The IG module
-keeps its canonical path, so a local Go workspace selects the owner-fork
+Clone upstream `inspektor-gadget/inspektor-gadget` beside this repository. The
+IG module keeps its canonical path, so a local Go workspace selects the local
 checkout without changing imports:
 
 ```bash
-go work init ./ig-kmx-guardd-public/gadget ./inspektor-gadget-public
+go work init ./ig-kmx-guardd-public/gadget ./inspektor-gadget
 go work edit \
-  -replace=github.com/inspektor-gadget/inspektor-gadget@v0.0.0=./inspektor-gadget-public
+  -replace=github.com/inspektor-gadget/inspektor-gadget@v0.0.0=./inspektor-gadget
 cd ig-kmx-guardd-public/gadget
 go test ./...
 go vet ./...
 GOWORK=off go mod edit \
-  -replace=github.com/inspektor-gadget/inspektor-gadget@v0.0.0=../../inspektor-gadget-public
+  -replace=github.com/inspektor-gadget/inspektor-gadget@v0.0.0=../../inspektor-gadget
 GOWORK=off go mod tidy
 GOWORK=off go mod vendor
-../../inspektor-gadget-public/ig image build \
+../../inspektor-gadget/ig image build \
   --builder-image-pull=missing \
   --update-metadata \
   --validate-metadata \
@@ -38,10 +38,10 @@ git diff --exit-code
 
 The host tests use the machine-local `go.work`. The containerized IG image
 builder cannot see that parent workspace, so the next three commands create a
-temporary vendor tree from the same owner-fork checkout. Do not commit
-`go.work`, the temporary `replace`, or `vendor/`. Build the `ig` executable
-normally from the owner fork before running the image command. The explicit
-owner-controlled OCI name prevents IG's short-name default from attributing the
+temporary vendor tree from the same checkout. Do not commit `go.work`, the
+temporary `replace`, or `vendor/`. Build the `ig` executable normally from the
+IG checkout before running the image command. The explicit project OCI name
+prevents IG's short-name default from attributing the custom AgentPolicy
 artifact to the upstream `inspektor-gadget` package namespace.
 
 ## Policy boundary
@@ -62,5 +62,5 @@ The WASM map population completes before `policy_state` becomes active. Kernel
 events include the operation, decision, reason, rule ID, cgroup ID, process and
 user identity, policy generation, errno, and resolved object path.
 
-guardd loads this gadget directly through the pinned owner-fork `ig` executable.
+guardd loads this gadget directly through the installed `ig` executable.
 There is no adapter image, init container, or bundled second copy of IG.
