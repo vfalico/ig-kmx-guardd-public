@@ -75,17 +75,14 @@ branch=agentpolicy-kmx-orka-ig-guardd-current
 git clone --branch "$branch" \
   https://github.com/vfalico/ig-kmx-guardd-public.git
 git clone https://github.com/vfalico/inspektor-gadget-public.git
-git -C ig-kmx-guardd-public checkout \
-  de8b24619cfd94a7cbc9d5f711911a3d800faa15
 git -C inspektor-gadget-public checkout \
   b6dce71343f02269051fdea4e0d463d72c1d5310
 ```
 
-The pinned guardd commit is the accepted implementation tree. This root README
-is a publication overlay, so it is intentionally not present after that
-checkout. The companion integration repository's `release-manifest.json`
-records both the implementation identity and the exact final publication
-candidate.
+Use the companion integration repository's `release-manifest.json` to verify
+the exact guardd implementation and publication identity. The manifest avoids
+an impossible self-reference from this README while keeping the clone
+reproducible.
 
 Create an isolated Python environment and run the host tests:
 
