@@ -37,19 +37,21 @@ class RuntimeReadbackTests(unittest.TestCase):
   with self.assertRaises(ValueError):KernelInventory._bytes([999])
 
 class RuntimeImageTests(unittest.TestCase):
- def _fixture(self,root,reference="ghcr.io/vfalico/ig-kmx-guardd-public/agentpolicy:0.4.1"):
+ def _fixture(self,root,reference="ghcr.io/vfalico/ig-kmx-guardd-public/agentpolicy:0.4.1",archive_digest=None,expected_digest=None):
   log=os.path.join(root,"ig.log");ig=os.path.join(root,"ig")
   with open(ig,"w") as stream:
    stream.write("#!/usr/bin/env python3\nimport json,os,sys\nwith open(os.environ['FAKE_IG_LOG'],'a') as log: log.write(json.dumps(sys.argv[1:])+'\\n')\nif sys.argv[1:3]==['image','import']: sys.exit(int(os.environ.get('FAKE_IG_IMPORT_RC','0')))\nsys.exit(0)\n")
   os.chmod(ig,stat.S_IRUSR|stat.S_IWUSR|stat.S_IXUSR)
   archive=os.path.join(root,"agentpolicy.oci.tar")
+  archive_digest=archive_digest or "sha256:"+"1"*64
+  expected_digest=expected_digest or archive_digest
   annotations={} if reference is None else {"org.opencontainers.image.ref.name":reference}
-  raw=json.dumps({"schemaVersion":2,"manifests":[{"annotations":annotations}]}).encode()
+  raw=json.dumps({"schemaVersion":2,"manifests":[{"annotations":annotations,"digest":archive_digest}]}).encode()
   with tarfile.open(archive,"w") as output:
    info=tarfile.TarInfo("index.json");info.size=len(raw);output.addfile(info,io.BytesIO(raw))
   def digest(path):
    with open(path,"rb") as stream:return "sha256:"+hashlib.sha256(stream.read()).hexdigest()
-  return log,VanillaIGRuntime(ig,digest(ig),archive,digest(archive))
+  return log,VanillaIGRuntime(ig,digest(ig),archive,digest(archive),expected_digest)
  def test_verified_archive_is_imported_and_same_reference_is_run(self):
   with tempfile.TemporaryDirectory() as root:
    log,runtime=self._fixture(root);old=os.environ.get("FAKE_IG_LOG");os.environ["FAKE_IG_LOG"]=log
@@ -82,5 +84,9 @@ class RuntimeImageTests(unittest.TestCase):
     if old_rc is None:os.environ.pop("FAKE_IG_IMPORT_RC",None)
     else:os.environ["FAKE_IG_IMPORT_RC"]=old_rc
    self.assertIsNone(runtime.gadget_image)
+ def test_rejects_configured_gadget_digest_not_in_archive(self):
+  with tempfile.TemporaryDirectory() as root:
+    _,runtime=self._fixture(root,expected_digest="sha256:"+"2"*64)
+    with self.assertRaisesRegex(ValueError,"OCI gadget digest mismatch"):runtime._archive_image()
 
 if __name__=="__main__":unittest.main()

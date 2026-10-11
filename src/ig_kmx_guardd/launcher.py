@@ -95,7 +95,7 @@ def build_server(data: dict):
     from .server import Server
 
     runtime = VanillaIGRuntime(
-        data["ig_path"], data["ig_sha256"], data["oci_archive"], data["oci_sha256"],
+        data["ig_path"], data["ig_sha256"], data["oci_archive"], data["oci_sha256"], data["gadget_digest"],
         max_event_queue=int(data.get("max_event_queue", 4096)),
     )
     runtime.verify()

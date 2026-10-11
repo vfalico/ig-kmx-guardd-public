@@ -90,12 +90,13 @@ class Worker:
 
 
 class VanillaIGRuntime:
-    def __init__(self, ig_path: str, ig_sha256: str, oci_archive: str, oci_sha256: str,
+    def __init__(self, ig_path: str, ig_sha256: str, oci_archive: str, oci_sha256: str, gadget_digest: str,
                  timeout_s: float = 15.0, max_event_queue: int = 4096):
         self.ig_path = os.path.realpath(ig_path)
         self.oci_archive = os.path.realpath(oci_archive)
         self.ig_sha256 = digest(ig_sha256, "ig_sha256")
         self.oci_sha256 = digest(oci_sha256, "oci_sha256")
+        self.gadget_digest = digest(gadget_digest, "gadget_digest")
         self.timeout_s = timeout_s
         if not 1 <= max_event_queue <= 1_000_000:
             raise ValueError("max_event_queue outside [1, 1000000]")
@@ -127,18 +128,20 @@ class VanillaIGRuntime:
         manifests = index.get("manifests") if isinstance(index, dict) else None
         if not isinstance(manifests, list):
             raise ValueError("OCI index manifests missing")
-        references = {
-            annotations["org.opencontainers.image.ref.name"]
+        candidates = [
+            (annotations["org.opencontainers.image.ref.name"], manifest.get("digest"))
             for manifest in manifests if isinstance(manifest, dict)
             for annotations in [manifest.get("annotations")]
             if isinstance(annotations, dict)
             and isinstance(annotations.get("org.opencontainers.image.ref.name"), str)
-        }
-        if len(references) != 1:
+        ]
+        if len(candidates) != 1:
             raise ValueError("OCI archive must declare exactly one image reference")
-        image = references.pop()
+        image, archive_gadget_digest = candidates[0]
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}", image):
             raise ValueError("invalid OCI image reference")
+        if digest(archive_gadget_digest, "OCI gadget digest") != self.gadget_digest:
+            raise ValueError("OCI gadget digest mismatch")
         return image
 
     def _import_archive(self) -> None:

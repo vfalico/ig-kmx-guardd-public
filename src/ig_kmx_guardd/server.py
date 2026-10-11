@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import array
 from concurrent.futures import ThreadPoolExecutor
+import logging
 import os
 import socket
 import stat
@@ -15,6 +16,7 @@ from .proto import PROTOCOL_VERSION, ResponseFrame, pack_packet, unpack_packet
 
 MAX_FDS = 2
 _FD_ITEMSIZE = array.array("i").itemsize
+log = logging.getLogger(__name__)
 
 
 def peer_uid(conn: socket.socket) -> int:
@@ -129,12 +131,24 @@ class Server:
             try:
                 raw, fds = recv_packet(conn)
                 env = Envelope.from_frame(unpack_packet(raw))
-                result = self.service.dispatch(peer_uid(conn), env, fds)
+                durable = self.service.dispatch(peer_uid(conn), env, fds)
+                if (
+                    not isinstance(durable, dict)
+                    or set(durable) != {"ok", "request_id", "result"}
+                    or durable["ok"] is not True
+                    or durable["request_id"] != env.request_id
+                    or not isinstance(durable["result"], dict)
+                ):
+                    raise RuntimeError("invalid durable service response")
                 encoded = pack_packet(ResponseFrame(
-                    PROTOCOL_VERSION, env.request_id, True, cbor.dumps(result), "", ""
+                    PROTOCOL_VERSION, env.request_id, True, cbor.dumps(durable["result"]), "", ""
                 ).encode())
             except Exception as exc:
                 request_id = env.request_id if "env" in locals() else ""
+                log.warning(
+                    "guardd request rejected request_id=%s error=%s: %s",
+                    request_id or "<unbound>", type(exc).__name__, str(exc)[:512],
+                )
                 encoded = pack_packet(ResponseFrame(
                     PROTOCOL_VERSION, request_id, False, cbor.dumps({}),
                     type(exc).__name__, str(exc)[:512],

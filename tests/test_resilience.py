@@ -10,6 +10,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from ig_kmx_guardd.model import Binding, State
+from ig_kmx_guardd import cbor
 from ig_kmx_guardd.proto import ResponseFrame, unpack_packet
 from protocol_helpers import BUILDER
 from ig_kmx_guardd.server import Server
@@ -21,7 +22,7 @@ DIGEST_B = "sha256:" + "b" * 64
 
 class EchoService:
     def dispatch(self, uid, env, fds):
-        return {"ok": True, "result": {"action": env.action, "uid": uid}}
+        return {"ok": True, "request_id": env.request_id, "result": {"action": env.action, "uid": uid}}
 
 
 def valid_frame(request_id="r1"):
@@ -84,6 +85,12 @@ class ServerResilienceTests(unittest.TestCase):
         self.assertTrue(response.ok)
         self.assertTrue(self.thread.is_alive())
         self.assertEqual(self.errors, [])
+
+    def test_success_frame_contains_only_action_result(self):
+        response = self.request(valid_frame("result-shape"))
+        self.assertTrue(response.ok)
+        self.assertEqual(response.request_id, "result-shape")
+        self.assertEqual(cbor.loads(response.payload_cbor), {"action": "capabilities", "uid": os.getuid()})
 
     def test_idle_client_cannot_starve_second_request(self):
         idle = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)

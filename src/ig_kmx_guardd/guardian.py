@@ -30,6 +30,29 @@ class GuardianHandle:
     frozen: bool = False
     error: str | None = None
 
+    def confirm_armed(self, timeout_s: float) -> dict:
+        """Synchronize with the live guardian immediately before release."""
+        try:
+            self.control.sendall(b"P")
+        except OSError as exc:
+            raise RuntimeError(f"guardian challenge failed: {exc}") from exc
+        timeout_ms = max(1, round(min(max(timeout_s, 0.1), 5.0) * 1000))
+        poller = select.poll()
+        poller.register(self.control.fileno(), select.POLLIN | select.POLLHUP | select.POLLERR)
+        events = dict(poller.poll(timeout_ms))
+        if not events:
+            raise TimeoutError("guardian challenge timed out")
+        payload = self.control.recv(4096)
+        if not payload:
+            raise RuntimeError(f"guardian exited during challenge with status {self.process.poll()}")
+        try:
+            notice = json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise RuntimeError(f"invalid guardian challenge response: {exc}") from exc
+        if notice != {"armed": True} or self.process.poll() is not None:
+            raise RuntimeError(f"guardian is not armed: {notice}")
+        return notice
+
     def refresh(self) -> dict:
         """Drain bounded guardian notices without blocking."""
         while True:
@@ -69,6 +92,8 @@ class GuardianHandle:
             self.control.close()
         except OSError:
             pass
+        if self.process.stderr is not None:
+            self.process.stderr.close()
         return {"alive": False, "cause": self.cause, "frozen": self.frozen,
                 "error": self.error, "pid": self.process.pid}
 
@@ -112,13 +137,36 @@ def launch(cgroup_fd: int, worker_pidfd: int | None, event_consumer_fd: int,
             os.close(fd)
     daemon_side.setblocking(False)
     handle = GuardianHandle(process, daemon_side, identity)
-    time.sleep(0.02)
-    if process.poll() is not None:
-        handle.refresh()
+    try:
+        _await_ready(process, daemon_side, timeout_s)
+    except Exception as exc:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2.0)
         diagnostic = process.stderr.read(4096).decode(errors="replace").strip() if process.stderr else ""
         daemon_side.close()
-        raise RuntimeError(f"fail-safe guardian failed to arm: {handle.error or diagnostic or process.returncode}")
+        raise RuntimeError(f"fail-safe guardian failed to arm: {exc}; {diagnostic}".rstrip("; ")) from exc
     return handle
+
+
+def _await_ready(process: subprocess.Popen, control: socket.socket, timeout_s: float) -> None:
+    timeout_ms = max(1, round(min(max(timeout_s, 0.1), 5.0) * 1000))
+    poller = select.poll()
+    poller.register(control.fileno(), select.POLLIN | select.POLLHUP | select.POLLERR)
+    events = dict(poller.poll(timeout_ms))
+    if not events:
+        raise TimeoutError("guardian readiness timed out")
+    payload = control.recv(4096)
+    if not payload:
+        raise RuntimeError(f"guardian exited before readiness with status {process.poll()}")
+    try:
+        notice = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"invalid guardian readiness notice: {exc}") from exc
+    if notice != {"ready": True}:
+        raise RuntimeError(f"guardian rejected readiness: {notice}")
+    if process.poll() is not None:
+        raise RuntimeError(f"guardian exited during readiness with status {process.returncode}")
 
 
 def _notice(control: socket.socket, cause: str, frozen: bool, error: str | None = None) -> None:
@@ -152,6 +200,7 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
     mask = select.POLLIN | select.POLLHUP | select.POLLERR
     for fd in (control_fd, worker_pidfd, event_consumer_fd, parent_pidfd):
         poller.register(fd, mask)
+    control.send(json.dumps({"ready": True}, separators=(",", ":")).encode())
     worker_watched = True
     while True:
         events = dict(poller.poll())
@@ -161,7 +210,16 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
             if command == b"D":
                 _notice(control, "orderly_disarm", False)
                 return 0
-            cause = "guardd_control_lost" if command == b"" else "invalid_control"
+            if command == b"P":
+                if validate_cgroup_fd(cgroup_fd) != expected:
+                    cause = "identity_mismatch"
+                else:
+                    control.send(json.dumps({"armed": True}, separators=(",", ":")).encode())
+                    continue
+            elif command == b"":
+                cause = "guardd_control_lost"
+            else:
+                cause = "invalid_control"
         elif event & (select.POLLHUP | select.POLLERR):
             cause = "guardd_control_lost"
         elif parent_pidfd in events:

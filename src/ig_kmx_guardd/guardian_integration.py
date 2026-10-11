@@ -7,7 +7,7 @@ import time
 
 from .cgroup import read_events, task_ids
 from .guardian import GuardianHandle, launch
-from .model import State
+from .model import Stage, State
 from .service import GuardService
 
 
@@ -64,6 +64,7 @@ class FailSafeGuardService(GuardService):
             )
             self.guardians[key] = guardian
             self._consumer_watchers[key] = watcher
+            guardian.confirm_armed(self.config.freeze_timeout_s)
             result["fail_safe_guardian"] = {
                 "armed": True, "pid": guardian.process.pid,
                 "watches": [
@@ -72,6 +73,14 @@ class FailSafeGuardService(GuardService):
                 ],
                 "action": "freeze_exact_cgroup",
             }
+            final = self._receipt(binding, Stage.FAIL_SAFE_GUARDIAN_ARMED, {
+                "held": True,
+                "cgroup": identity.dict(),
+                "guardian": result["fail_safe_guardian"],
+            })
+            result["receipts"].append(final)
+            result["release_eligible_receipt"] = final
+            guardian.confirm_armed(self.config.freeze_timeout_s)
             return result
         except Exception as exc:
             # Parent activation has not yet returned to Orka; freeze before
@@ -81,12 +90,28 @@ class FailSafeGuardService(GuardService):
             except Exception:  # AUDITED: DELIBERATE — original arm failure remains primary; state records uncertainty
                 pass
             worker = self.workers.pop(key, None)
-            if worker is not None:
+            cleanup_errors = []
+
+            def cleanup(label, operation):
                 try:
-                    self.runtime.terminate(worker)
-                except Exception:  # AUDITED: DELIBERATE — frozen workload is the fail-safe boundary
-                    pass
-            raise RuntimeError(f"fail-safe guardian arm failed: {exc}") from exc
+                    operation()
+                except Exception as cleanup_exc:
+                    cleanup_errors.append(f"{label}: {cleanup_exc}")
+
+            guardian = self.guardians.pop(key, None)
+            if guardian is not None:
+                cleanup("guardian", guardian.disarm)
+            if worker is not None:
+                cleanup("worker", lambda: self.runtime.terminate(worker))
+                if hasattr(self.inventory, "release"):
+                    cleanup("inventory", lambda: self.inventory.release(worker.process.pid))
+            self.policies.pop(key, None)
+            owned_cgroup = self.cgroup_fds.pop(key, None)
+            if owned_cgroup is not None:
+                cleanup("cgroup fd", lambda: os.close(owned_cgroup))
+            self._consumer_watchers.pop(key, None)
+            suffix = f"; cleanup errors: {'; '.join(cleanup_errors)}" if cleanup_errors else ""
+            raise RuntimeError(f"fail-safe guardian arm failed: {exc}{suffix}") from exc
         finally:
             if event_consumer_fd >= 0:
                 os.close(event_consumer_fd)
