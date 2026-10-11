@@ -6,7 +6,7 @@ ConditionPathExists=/etc/ig-kmx-guardd/config.json
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ig-kmx-guardd --config /etc/ig-kmx-guardd/config.json
+ExecStart=/opt/ig-kmx-guardd/venv/bin/ig-kmx-guardd --config /etc/ig-kmx-guardd/config.json
 Restart=on-failure
 RestartSec=2
 User=root
