@@ -1,0 +1,43 @@
+[Unit]
+Description=KMX Inspektor Gadget containment supervisor
+After=local-fs.target
+Before=orka.service
+ConditionPathExists=/etc/ig-kmx-guardd/config.json
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ig-kmx-guardd --config /etc/ig-kmx-guardd/config.json
+Restart=on-failure
+RestartSec=2
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=no
+ProtectClock=yes
+ProtectHostname=yes
+ProcSubset=all
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_KILL
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_DAC_READ_SEARCH CAP_KILL
+ReadWritePaths=/run/ig-kmx-guardd /var/lib/ig-kmx-guardd /var/lib/ig /sys/fs/cgroup
+ReadOnlyPaths=/etc/ig-kmx-guardd
+RuntimeDirectory=ig-kmx-guardd
+RuntimeDirectoryMode=0750
+StateDirectory=ig-kmx-guardd ig
+StateDirectoryMode=0700
+LimitMEMLOCK=infinity
+TimeoutStopSec=20
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

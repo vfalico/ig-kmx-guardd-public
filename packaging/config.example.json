@@ -1,0 +1,27 @@
+{
+  "allowed_uids": [
+    1001
+  ],
+  "authorization_issuer_id": "kmx-production",
+  "authorization_public_key_file": "/etc/ig-kmx-guardd/kmx-authorization-public.pem",
+  "bpftool_path": "/usr/sbin/bpftool",
+  "freeze_timeout_s": 5.0,
+  "gadget_digest": "sha256:f880841c9031d63a146cd54660ea202580cff17735f0b48e8fde78b21ec25818",
+  "ig_path": "/usr/local/bin/ig",
+  "ig_sha256": "sha256:3fdc7858cf759ad29e2e5b2dd011ee1e06facc98db43dc405a0ebe947409a894",
+  "listen_backlog": 32,
+  "max_evidence": 10000,
+  "max_policy_bytes": 262144,
+  "max_workers": 8,
+  "node_id": "node-EXAMPLE",
+  "oci_archive": "/opt/ig-kmx-guardd/release/agentpolicy-0.4.1.oci.tar",
+  "oci_sha256": "sha256:0cb554cef285931cd82444ba8f7f7a9c040362ef5d2ebf921db2ac31700d3ce1",
+  "policy_digest_allowlist": [],
+  "receipt_private_key_file": "/etc/ig-kmx-guardd/receipt-private.pem",
+  "receipt_public_key_file": "/etc/ig-kmx-guardd/receipt-public.pem",
+  "receive_timeout_s": 2.0,
+  "socket_mode": "0660",
+  "socket_path": "/run/ig-kmx-guardd/guardd.sock",
+  "stable_empty_s": 0.2,
+  "state_db": "/var/lib/ig-kmx-guardd/state.db"
+}

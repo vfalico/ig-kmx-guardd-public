@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ig-kmx-guardd"
+version = "0.1.0"
+description = "Fail-closed node-local supervisor for digest-pinned Inspektor Gadget policy enforcement"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "Veaceslav Falico", email = "vfalico@gmail.com"}]
+
+[project.scripts]
+ig-kmx-guardd = "ig_kmx_guardd.launcher:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.data-files]
+"share/ig-kmx-guardd" = ["packaging/config.example.json", "packaging/ig-kmx-guardd.service"]

@@ -1,0 +1,80 @@
+name: agentpolicy
+version: 0.4.1
+description: enforce exact executable and write-open policy for one cgroup with BPF LSM
+homepageURL: https://github.com/vfalico/ig-kmx-guardd-public
+documentationURL: https://github.com/vfalico/ig-kmx-guardd-public/blob/main/gadget/README.md
+sourceURL: https://github.com/vfalico/ig-kmx-guardd-public
+annotations:
+  org.opencontainers.image.title: agentpolicy
+  org.opencontainers.image.description: Standalone BPF-LSM agent policy enforcement gadget
+  org.opencontainers.image.licenses: Apache-2.0 AND (LGPL-2.1 OR BSD-2-Clause)
+  io.artifacthub.package.readme-url: https://github.com/vfalico/ig-kmx-guardd-public/blob/main/gadget/README.md
+datasources:
+  agentpolicy:
+    annotations:
+      description: kernel policy enforcement decisions
+    fields:
+      timestamp_raw:
+        annotations:
+          template: timestamp
+      cgroup_id:
+        annotations:
+          description: exact cgroup-v2 identity used for authorization
+      pad:
+        annotations:
+          columns.hidden: true
+          description: alignment padding, not policy evidence
+      pid_tgid:
+        annotations:
+          description: kernel pid/tgid pair at the enforcement hook
+      uid_gid:
+        annotations:
+          description: kernel uid/gid pair at the enforcement hook
+      operation:
+        annotations:
+          description: 1 exec, 2 write-open, 3 write, 4 connect
+      decision:
+        annotations:
+          description: 2 means deny (allows are intentionally not emitted)
+      reason:
+        annotations:
+          description: 1 matched rule, 2 startup fail-closed, 3 sticky quarantine
+      action:
+        annotations:
+          description: 1 means kernel returned EPERM
+      rule_id:
+        annotations:
+          description: matched policy rule; zero is lifecycle/quarantine
+      kernel_errno:
+        annotations:
+          description: negative kernel errno returned by this hook
+      policy_generation:
+        annotations:
+          description: atomically committed policy generation
+      address:
+        annotations:
+          description: raw IPv4 destination bytes for connect events
+      port_be:
+        annotations:
+          description: raw network-byte-order TCP destination port
+      comm:
+        annotations:
+          template: comm
+      object:
+        annotations:
+          description: canonical kernel-resolved executable or file path
+params:
+  ebpf:
+    target_cgroup_id:
+      key: target-cgroup-id
+      defaultValue: "0"
+      description: Exact bpf_get_current_cgroup_id value; zero targets nobody
+    fail_closed:
+      key: fail-closed
+      defaultValue: "true"
+      description: Deny target operations before ACTIVE or on path-resolution failure
+  wasm:
+    policy:
+      key: policy
+      defaultValue: ""
+      description: Strict agentpolicy.gadget/v1alpha1 JSON policy (maximum 256 KiB)
