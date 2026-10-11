@@ -74,6 +74,7 @@ class FailSafeGuardService(GuardService):
                 "action": "freeze_exact_cgroup",
             }
             final = self._receipt(binding, Stage.FAIL_SAFE_GUARDIAN_ARMED, {
+                "assurance": "worker_fd_policy_map_readback_and_fail_safe_guardian",
                 "held": True,
                 "cgroup": identity.dict(),
                 "guardian": result["fail_safe_guardian"],
@@ -81,6 +82,7 @@ class FailSafeGuardService(GuardService):
             result["receipts"].append(final)
             result["release_eligible_receipt"] = final
             guardian.confirm_armed(self.config.freeze_timeout_s)
+            self.store.advance_state_version(key)
             return result
         except Exception as exc:
             # Parent activation has not yet returned to Orka; freeze before

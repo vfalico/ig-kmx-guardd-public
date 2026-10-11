@@ -148,6 +148,15 @@ class Store:
             raise ValueError(f"state version mismatch: expected {expected}, durable {actual}")
         return actual
 
+    def advance_state_version(self, key: str) -> int:
+        """Advance the CAS token for a durable release boundary without changing state."""
+        with self.lock, self.db:
+            self.db.execute(
+                "UPDATE sessions SET updated_ns=?,state_version=state_version+1 WHERE key=?",
+                (time.time_ns(), key),
+            )
+            return int(self.session(key)["state_version"])
+
     def set_worker(self, key: str, pid: int) -> None:
         with self.lock, self.db:
             self.db.execute(

@@ -187,6 +187,14 @@ def _confirm_frozen(cgroup_fd: int, timeout_s: float) -> bool:
     return False
 
 
+def _guardd_loss_cause(parent_pidfd: int, parent_reported: bool, fallback: str) -> str:
+    if parent_reported:
+        return "guardd_died"
+    probe = select.poll()
+    probe.register(parent_pidfd, select.POLLIN | select.POLLHUP | select.POLLERR)
+    return "guardd_died" if probe.poll(100) else fallback
+
+
 def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
           parent_pidfd: int, control_fd: int, expected: CgroupIdentity,
           timeout_s: float) -> int:
@@ -205,7 +213,9 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
     while True:
         events = dict(poller.poll())
         event = events.get(control_fd, 0)
-        if event & select.POLLIN:
+        if parent_pidfd in events:
+            cause = "guardd_died"
+        elif event & select.POLLIN:
             command = control.recv(16)
             if command == b"D":
                 _notice(control, "orderly_disarm", False)
@@ -222,8 +232,6 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
                 cause = "invalid_control"
         elif event & (select.POLLHUP | select.POLLERR):
             cause = "guardd_control_lost"
-        elif parent_pidfd in events:
-            cause = "guardd_died"
         elif worker_watched and worker_pidfd in events:
             cause = "ig_worker_died"
         elif event_consumer_fd in events:
@@ -248,6 +256,8 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
             # its supervisor or evidence consumer has been lost.
             if cause in {"guardd_died", "guardd_control_lost", "event_consumer_died"}:
                 signal.pidfd_send_signal(worker_pidfd, signal.SIGKILL)
+            if cause in {"guardd_control_lost", "event_consumer_died"}:
+                cause = _guardd_loss_cause(parent_pidfd, False, cause)
             _notice(control, cause, True)
         except ProcessLookupError:
             _notice(control, cause, True)
@@ -257,6 +267,7 @@ def guard(cgroup_fd: int, worker_pidfd: int, event_consumer_fd: int,
         if cause != "ig_worker_died":
             return 0
         poller.unregister(worker_pidfd)
+        poller.unregister(event_consumer_fd)
         worker_watched = False
 
 
