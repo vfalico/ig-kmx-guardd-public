@@ -105,8 +105,12 @@ static __always_inline struct path_key *resolve_path(struct path *p)
     __builtin_memset(&sc->raw, 0, sizeof(sc->raw));
     n = bpf_d_path(p, sc->raw.path, sizeof(sc->raw.path));
     if (n <= 0 || n > AP_MAX_PATH) return 0;
-    /* bpf_d_path returns the resolved length but places the path at the
-     * beginning of the supplied buffer on supported kernels. */
+    /* bpf_d_path copies the path to the start but may leave its internal
+     * end-of-buffer copy behind. Hash-map keys require deterministic padding. */
+#pragma unroll
+    for (int i = 0; i < AP_MAX_PATH; i++) {
+        if (i >= n) sc->raw.path[i] = 0;
+    }
     return &sc->raw;
 }
 
